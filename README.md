@@ -17,3 +17,4 @@ Qt can be built via the `build-qt.zsh` Zsh-script. Qt can be compiled natively o
 ## More Information
 
 Further details can be found in the [Wiki Pages](https://github.com/HaleLP/hale-deps/wiki).
+
