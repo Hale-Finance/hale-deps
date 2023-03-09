@@ -1,12 +1,10 @@
 autoload -Uz log_debug log_error log_info log_status log_output
 
 ## Dependency Information
-local name='freetype'
-local version='2.12.1'
-local url='https://downloads.sourceforge.net/project/freetype/freetype2/2.12.1/freetype-2.12.1.tar.xz'
-local hash="${0:a:h}/checksums/freetype-2.12.1.tar.xz.sha256"
-
-local -i shared_libs=1
+local name='rnnoise'
+local version='2020-07-28'
+local url='https://github.com/xiph/rnnoise.git'
+local hash='085d8f484af6141b1b88281a4043fb9215cead01'
 
 ## Build Steps
 setup() {
@@ -27,7 +25,7 @@ clean() {
 config() {
   autoload -Uz mkcd progress
 
-  case ${target} {
+  case ${target} in
     macos-universal)
       autoload -Uz universal_config && universal_config
       return
@@ -35,23 +33,31 @@ config() {
     macos-*)
       args+=(--host="${arch}-apple-darwin${target_config[darwin_target]}")
       ;;
-  }
+  esac
 
   log_info "Config (%F{3}${target}%f)"
+
   cd "${dir}"
+
+  case "${target}" in
+    macos-*)
+      args+=(--host="${arch}-apple-darwin${target_config[darwin_target]}")
+      ;;
+  esac
 
   local _onoff=(disable enable)
   args+=(
     "--${_onoff[(( shared_libs + 1 ))]}-shared"
-    --without-harfbuzz
-    --without-brotli
     -C
+    --disable-dependency-tracking
     --prefix="${target_config[output_dir]}"
   )
 
+  progress ./autogen.sh
+
   mkcd "build_${arch}"
 
-  log_debug "Configure args: ${args}"
+  log_debug "Configure options: ${args}"
   CFLAGS="${c_flags}" \
   LDFLAGS="${ld_flags}" \
   PKG_CONFIG_PATH="${target_config[output_dir]}/lib/pkgconfig" \
@@ -62,12 +68,12 @@ config() {
 build() {
   autoload -Uz mkcd progress
 
-  case ${target} {
+  case "${target}" in
     macos-universal)
       autoload -Uz universal_build && universal_build
       return
       ;;
-  }
+  esac
 
   log_info "Build (%F{3}${target}%f)"
 
@@ -80,11 +86,6 @@ build() {
 install() {
   autoload -Uz progress
 
-  if [[ ! -d "${dir}/build_${arch}" ]] {
-    log_warning "No binaries for architecture ${arch} found, skipping installation"
-    return
-  }
-
   log_info "Install (%F{3}${target}%f)"
 
   cd "${dir}/build_${arch}"
@@ -95,7 +96,7 @@ install() {
     case ${target} {
       macos-*)
         local file
-        for file ("${target_config[output_dir]}"/lib/libfreetype*.dylib) {
+        for file ("${target_config[output_dir]}"/lib/librnnoise*.dylib) {
           if [[ ! -e "${file}" || -h "${file}" ]] continue
           strip -x "${file}"
           log_status "Stripped ${file#"${target_config[output_dir]}"}"
@@ -114,7 +115,7 @@ fixup() {
     macos*)
       if (( shared_libs )) {
         log_info "Fixup (%F{3}${target}%f)"
-        fix_rpaths "${target_config[output_dir]}"/lib/libfreetype*.dylib
+        fix_rpaths "${target_config[output_dir]}"/lib/librnnoise*.dylib
       }
       ;;
   }
