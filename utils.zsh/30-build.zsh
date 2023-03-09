@@ -74,8 +74,9 @@ Windows mval     : ${config_data[mval]:--}"
 }
 
 setup_build_parameters() {
+  log_info "4"
   autoload -Uz log_error log_output log_debug
-
+  log_info "5"
   if (( # < 2 )) {
     log_error "Called without enough arguments"
     return 2
@@ -86,14 +87,14 @@ setup_build_parameters() {
   typeset -g -a cxx_flags=(-w -pipe)
   typeset -g -a ld_flags=()
   typeset -g -a as_flags=()
-
+  log_info "6"
   typeset -g -a cmake_flags=(
     -DCMAKE_INSTALL_PREFIX=${target_config[output_dir]}
     -DCMAKE_PREFIX_PATH=${target_config[output_dir]}
     -DCMAKE_BUILD_TYPE=${2}
     --no-warn-unused-cli
   )
-
+  log_info "7"
   if (( _loglevel == 0 )) cmake_flags+=(-Wno_deprecated -Wno-dev --log-level=ERROR)
 
   case "${1}" in
