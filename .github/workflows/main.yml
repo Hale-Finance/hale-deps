@@ -11,6 +11,9 @@ on:
       - '**.md'
     branches:
       - master
+      
+permissions:
+  contents: write
 
 jobs:
   ffmpeg-build:
