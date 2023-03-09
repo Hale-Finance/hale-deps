@@ -1,1 +1,1 @@
-./build-deps.zsh
+build-deps.zsh
