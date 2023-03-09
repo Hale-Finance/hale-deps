@@ -13,3 +13,4 @@
 /linux*/*
 /windows*
 /windows*/*
+/.vs/*
