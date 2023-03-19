@@ -11,9 +11,6 @@ on:
       - '**.md'
     branches:
       - master
-      
-permissions:
-  contents: write
 
 jobs:
   ffmpeg-build:
@@ -123,8 +120,32 @@ jobs:
         with:
           name: ${{ steps.setup.outputs.artifactName }}
           path: ${{ github.workspace }}/${{ matrix.target }}/${{ steps.setup.outputs.artifactFileName }}
-  
 
+  ffmpeg-package-universal:
+    name: 'Build FFmpeg (Universal)'
+    runs-on: macos-12
+    needs: [ffmpeg-build]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Check for GitHub Labels
+        id: seekingTesters
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          if [[ -n "$(curl -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -s "${{ github.event.pull_request.url }}" | jq -e '.labels[] | select(.name == "Seeking Testers")')" ]]; then
+            echo "found=true" >> $GITHUB_OUTPUT
+          else
+            echo "found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create universal binary package
+        if: ${{ success() && (github.event_name != 'pull_request' || steps.seekingTesters.outputs.found == 'true') }}
+        uses: ./.github/actions/create-universal
+        with:
+          arm64: 'ffmpeg-macos-arm64-${{ github.sha }}'
+          x86_64: 'ffmpeg-macos-x86_64-${{ github.sha }}'
+          outputName: 'ffmpeg-macos-universal-${{ github.sha }}'
 
   macos-build:
     name: 'Build macOS Dependencies'
@@ -609,7 +630,7 @@ jobs:
     name: 'Create and upload release'
     runs-on: ubuntu-20.04
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-    needs: [macos-package-universal, macos-qt5-package-universal, macos-qt6-package, windows-build, windows-qt-package]
+    needs: [ffmpeg-package-universal, macos-package-universal, macos-qt5-package-universal, macos-qt6-package, windows-build, windows-qt-package]
     defaults:
       run:
         shell: bash
@@ -631,7 +652,7 @@ jobs:
             _temp=$(mktemp -d)
             pushd "${_temp}" > /dev/null
 
-            for artifact in ${{ github.workspace }}/**/windows-@(deps)-!(qt5*|qt6*)-${arch}.*; do
+            for artifact in ${{ github.workspace }}/**/windows-@(deps|ffmpeg)-!(qt5*|qt6*)-${arch}.*; do
               case ${artifact} in
                 *.zip) unzip ${artifact} > /dev/null ;;
                 *.tar.xz) XZ_OPT=-T0 tar -xJf ${artifact} ;;
@@ -678,7 +699,7 @@ jobs:
             _temp=$(mktemp -d)
             pushd "${_temp}" > /dev/null
 
-            for artifact in ${{ github.workspace }}/**/macos-@(deps)-!(qt5*|qt6*)-${arch}.*; do
+            for artifact in ${{ github.workspace }}/**/macos-@(deps|ffmpeg)-!(qt5*|qt6*)-${arch}.*; do
               case ${artifact} in
                 *.zip) unzip ${artifact} > /dev/null ;;
                 *.tar.xz) XZ_OPT=-T0 tar -xvJf ${artifact} ;;
@@ -710,7 +731,7 @@ jobs:
           draft: false
           prerelease: false
           tag_name: ${{ steps.metadata.outputs.version }}
-          name: "Hale Deps Build ${{ steps.metadata.outputs.version }}"
+          name: "Hale Terminal Deps Build ${{ steps.metadata.outputs.version }}"
           body_path: ${{ github.workspace }}/CHECKSUMS.txt
           files: |
             ${{ github.workspace }}/windows-*-x64*.zip
