@@ -1,8 +1,8 @@
 param(
     [string] $Name = 'cmocka',
-    [string] $Version = '1.1.5',
+    [string] $Version = '1.1.7',
     [string] $Uri = 'https://git.cryptomilk.org/projects/cmocka.git',
-    [string] $Hash = '59dc0013f9f29fcf212fe4911c78e734263ce24c'
+    [string] $Hash = 'a01cc69ee9536f90e57c61a198f2d1944d3d4313'
 )
 
 function Setup {
@@ -35,9 +35,9 @@ function Configure {
     $OnOff = @('OFF', 'ON')
     $Options = @(
         $CmakeOptions
-        "-DBUILD_SHARED_LIBS=$($OnOff[$script:Shared.isPresent])"
-        '-DBUILD_TESTING=OFF'
-        '-DWITH_EXAMPLES=OFF'
+        "-DBUILD_SHARED_LIBS:BOOL=$($OnOff[$script:Shared.isPresent])"
+        '-DBUILD_TESTING:BOOL=OFF'
+        '-DWITH_EXAMPLES:BOOL=OFF'
     )
 
     Invoke-External cmake -S . -B "build_${Target}" @Options

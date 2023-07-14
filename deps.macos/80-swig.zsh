@@ -1,13 +1,13 @@
 autoload -Uz log_debug log_error log_info log_status log_output
 
 ## Dependency Information
-local name='websocketpp'
-local version='0.8.2'
-local url='https://github.com/zaphoyd/websocketpp.git'
-local hash='56123c87598f8b1dd471be83ca841ceae07f95ba'
+local name='swig'
+local version='1.6.37'
+local url='https://github.com/swig/swig.git'
+local hash="4dd285fad736c014224ef2ad25b85e17f3dce1f9"
 local patches=(
-  "${0:a:h}/patches/websocketpp/0001-update-minimum-cmake.patch \
-  61aa39ebe761f71b05306c5a6f025207c494e07b01f29fb6d3746865e93b6d4c"
+  "${0:a:h}/patches/swig/0001-add-Python-3-stable-abi.patch \
+  08e41977a897d0b4d6832ea9acfcba510ae8317344620e039b0703a910ad23bf"
 )
 
 ## Build Steps
@@ -30,6 +30,7 @@ patch() {
   autoload -Uz apply_patch
 
   log_info "Patch (%F{3}${target}%f)"
+
   cd ${dir}
 
   local patch
@@ -44,27 +45,31 @@ patch() {
 config() {
   autoload -Uz mkcd progress
 
-  log_info "Config (%F{3}${target}%f)"
-
   args=(
-    ${cmake_flags}
-    -DENABLE_CPP11=ON
-    -DBUILD_EXAMPLES=OFF
-    -DBUILD_TESTS=OFF
+    ${cmake_flags//ARCHITECTURES=${arch}/"ARCHITECTURES='x86_64;arm64'"}
   )
 
+  log_info "Config (%F{3}${target}%f)"
   cd ${dir}
-  log_debug "CMake configure options: ${args}"
+  log_debug "CMake configuration options: ${args}'"
   progress cmake -S . -B build_${arch} -G Ninja ${args}
 }
 
 build() {
-  autoload -Uz mkcd
+  autoload -Uz mkcd progress
 
   log_info "Build (%F{3}${target}%f)"
 
   cd ${dir}
-  cmake --build build_${arch} --config ${config}
+
+  args=(
+    --build build_${arch}
+    --config ${config}
+  )
+
+  if (( _loglevel > 1 )) args+=(--verbose)
+
+  cmake ${args}
 }
 
 install() {
@@ -76,6 +81,8 @@ install() {
     --install build_${arch}
     --config ${config}
   )
+
+  if (( _loglevel > 1 )) args+=(--verbose)
 
   cd ${dir}
   progress cmake ${args}

@@ -1,5 +1,5 @@
 name: 'Build FFmpeg'
-description: 'Builds FFmpeg for hale-deps with specified architecture, type, and build config'
+description: 'Builds FFmpeg for obs-deps with specified architecture, type, and build config'
 inputs:
   target:
     description: 'Build target for FFmpeg'

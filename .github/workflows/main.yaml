@@ -1,0 +1,165 @@
+name: build_deps
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - '20[2-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+    branches:
+      - master
+
+concurrency:
+  group: '${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}'
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pre-checks:
+    name: Run Pre-Checks
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      seekingTesters: ${{ steps.checks.outputs.seekingTesters }}
+      shortHash: ${{ steps.checks.outputs.shortHash }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Check for GitHub Labels
+        id: checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          : Check for GitHub Labels
+
+          case "${GITHUB_EVENT_NAME}" in
+            pull_request)
+              if gh pr view ${{ github.event.number }} --json labels \
+                | jq -e -r '.labels[] | select(.name == "Seeking Testers")' > /dev/null; then
+                echo "seekingTesters=true" >> $GITHUB_OUTPUT
+              else
+                echo "seekingTesters=false" >> $GITHUB_OUTPUT
+              fi
+              ;;
+            *)
+              echo "seekingTesters=false" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+          echo "shortHash=${GITHUB_SHA:0:9}" >> $GITHUB_OUTPUT
+
+  windows-qt6-build:
+    name: Build Qt6 (Windows)
+    runs-on: windows-2022
+    needs: pre-checks
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [x64, x86]
+        config: [RelWithDebInfo, Debug]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Environment
+        id: setup
+        run: |
+          # Setup Environment
+          $ArtifactName="qt6-windows-${{ matrix.target }}-${{ matrix.config }}-${{ needs.pre-checks.outputs.shortHash }}"
+          $FileName="windows-deps-qt6-$(Get-Date -Format 'yyyy-MM-dd')-${{ matrix.target }}-${{ matrix.config }}.zip"
+
+          "artifactName=${ArtifactName}" >> $env:GITHUB_OUTPUT
+          "artifactFileName=${FileName}" >> $env:GITHUB_OUTPUT
+
+      - name: Build Windows Qt
+        uses: ./.github/actions/build-qt
+        with:
+          target: ${{ matrix.target }}
+          config: ${{ matrix.config }}
+
+      - name: Publish Build Artifacts
+        if: github.event_name != 'pull_request' || fromJSON(needs.pre-checks.outputs.seekingTesters)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.setup.outputs.artifactName }}
+          path: ${{ github.workspace }}/windows/${{ steps.setup.outputs.artifactFileName }}
+
+  windows-qt6-package:
+    name: Package Windows Qt6
+    runs-on: windows-2022
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [x64, x86]
+    needs: [pre-checks, windows-qt6-build]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Create Windows Qt package
+        if: github.event_name != 'pull_request' || fromJSON(needs.pre-checks.outputs.seekingTesters)
+        uses: ./.github/actions/package-windows-qt
+        with:
+          releaseArtifact: qt6-windows-${{ matrix.target }}-RelWithDebInfo-${{ needs.pre-checks.outputs.shortHash }}
+          debugArtifact: qt6-windows-${{ matrix.target }}-Debug-${{ needs.pre-checks.outputs.shortHash }}
+          outputName: qt6-windows-${{ matrix.target }}-${{ needs.pre-checks.outputs.shortHash }}
+          pdbOutputName: qt6-windows-${{ matrix.target }}-PDBs-${{ needs.pre-checks.outputs.shortHash }}
+
+  make-release:
+    name: Create and upload release
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    needs: [macos-qt6-package, windows-qt6-package]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Get Metadata
+        id: metadata
+        run: |
+          : Get Metadata
+          echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Package Windows dependencies
+        run: |
+          : Package Windows dependencies
+          shopt -s extglob
+
+          for arch in x64 x86; do
+            _temp=$(mktemp -d)
+            pushd "${_temp}" > /dev/null
+
+            mv ${GITHUB_WORKSPACE}/qt6-windows-${arch}-!(*-@(Debug|RelWithDebInfo|Release|MinSizeRel))/*.zip ${GITHUB_WORKSPACE}
+            popd > /dev/null
+          done
+
+      - name: Generate Checksums
+        run: |
+          : Generate Checksums
+          shopt -s extglob
+          echo "### Checksums" > ${{ github.workspace }}/CHECKSUMS.txt
+          for file in ${{ github.workspace }}/@(*.tar.xz|*.zip); do
+            echo "    ${file##*/}: $(sha256sum "${file}" | cut -d " " -f 1)" >> ${{ github.workspace }}/CHECKSUMS.txt
+          done
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@1e07f4398721186383de40550babbdf2b84acfc5
+        with:
+          draft: false
+          prerelease: false
+          tag_name: ${{ steps.metadata.outputs.version }}
+          name: Hale Terminal Deps Build ${{ steps.metadata.outputs.version }}
+          body_path: ${{ github.workspace }}/CHECKSUMS.txt
+          files: |
+            ${{ github.workspace }}/windows-*-x64*.zip
+            ${{ github.workspace }}/windows-*-x86*.zip

@@ -1,13 +1,10 @@
 autoload -Uz log_debug log_error log_info log_status log_output
 
 ## Dependency Information
-local name='ntv2'
-local version='16.2'
-local url='https://github.com/aja-video/ntv2.git'
-local hash='0acbac70a0b5e6509cca78cfbf69974c73c10db9'
-
-## Dependency Overrides
-local -i shared_libs=0
+local name='nlohmann-json'
+local version='3.11.2'
+local url='https://github.com/nlohmann/json.git'
+local hash='bc889afb4c5bf1c0d8ee29ef35eaaf4c8bef8a5d'
 
 ## Build Steps
 setup() {
@@ -30,20 +27,14 @@ config() {
 
   log_info "Config (%F{3}${target}%f)"
 
-  local _onoff=(OFF ON)
-
   args=(
     ${cmake_flags}
-    -DAJA_BUILD_OPENSOURCE=ON
-    -DAJA_BUILD_APPS=OFF
-    -DAJA_INSTALL_SOURCES=OFF
-    -DAJA_INSTALL_HEADERS=ON
-    -DAJA_BUILD_SHARED="${_onoff[(( shared_libs + 1 ))]}"
+    -DJSON_BuildTests=OFF
   )
 
   cd ${dir}
   log_debug "CMake configure options: ${args}"
-  progress cmake -S . -B "build_${arch}" -G Ninja ${args}
+  progress cmake -S . -B build_${arch} -G Ninja ${args}
 }
 
 build() {
@@ -65,6 +56,6 @@ install() {
     --config ${config}
   )
 
-  cd ${dir}
+  cd "${dir}"
   progress cmake ${args}
 }
