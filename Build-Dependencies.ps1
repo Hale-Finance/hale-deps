@@ -11,7 +11,8 @@ param(
     [switch] $SkipAll,
     [switch] $SkipBuild,
     [switch] $SkipDeps,
-    [switch] $SkipUnpack
+    [switch] $SkipUnpack,
+    [switch] $VSPrerelease
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,7 +63,15 @@ function Run-Stages {
 
         . $Dependency
 
-        if ( ! ( $Targets.contains($Target) ) ) { continue }
+        if ( ! ( $Targets.contains($Target) ) ) {
+            $Stages | ForEach-Object {
+                Log-Debug "Removing function $_"
+                Remove-Item -ErrorAction 'SilentlyContinue' function:$_
+                $script:StageName = ''
+            }
+
+            return
+        }
 
         if ( $Version -eq '' ) { $Version = $Versions[$Target] }
         if ( $Uri -eq '' ) { $Uri = $Uris[$Target] }
@@ -133,6 +142,19 @@ function Package-Dependencies {
     )
 
     Remove-Item -ErrorAction 'SilentlyContinue' -Path $Items -Force -Recurse
+
+    $Params = @{
+        ErrorAction = "SilentlyContinue"
+        Path = @(
+            "share/hale-deps"
+        )
+        ItemType = "Directory"
+        Force = $true
+    }
+
+    New-Item @Params *> $null
+
+    "$(Get-Date -Format "yyyy-MM-dd")" > share/hale-deps/VERSION
 
     Log-Information "Package dependencies"
 
