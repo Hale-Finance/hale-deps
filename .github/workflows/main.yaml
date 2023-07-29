@@ -53,6 +53,69 @@ jobs:
 
           echo "shortHash=${GITHUB_SHA:0:9}" >> $GITHUB_OUTPUT
 
+  windows-build:
+    name: Build Windows Dependencies
+    runs-on: windows-2022
+    needs: pre-checks
+    strategy:
+      fail-fast: true
+      matrix:
+        target: [x64, x86]
+        include:
+          - target: x64
+            config: Release
+            type: static
+          - target: x86
+            config: Release
+            type: static
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Environment
+        id: setup
+        run: |
+          # Setup Environment
+
+          $Target='${{ matrix.target }}'
+          $ArtifactName="deps-windows-${Target}-${{ needs.pre-checks.outputs.shortHash }}"
+          $FileName="windows-deps-$(Get-Date -Format 'yyyy-MM-dd')-${Target}.zip"
+
+          "artifactName=${ArtifactName}" >> $env:GITHUB_OUTPUT
+          "artifactFileName=${FileName}" >> $env:GITHUB_OUTPUT
+
+      - name: Build ntv2 Debug
+        if: matrix.target == 'x64'
+        shell: pwsh
+        run: |
+          # Build ntv2 Debug
+
+          $Params = @{
+            Target = '${{ matrix.target }}'
+            Configuration = 'Debug'
+            Dependencies = 'ntv2'
+          }
+
+          ./Build-Dependencies.ps1 @Params
+          Remove-Item -Recurse -Force ${{ github.workspace }}/windows_build_temp
+
+      - name: Build Windows Dependencies
+        uses: ./.github/actions/build-deps
+        with:
+          target: ${{ matrix.target }}
+          type: ${{ matrix.type }}
+          config: ${{ matrix.config }}
+
+      - name: Publish Build Artifacts
+        if: github.event_name != 'pull_request' || fromJSON(needs.pre-checks.outputs.seekingTesters)
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ steps.setup.outputs.artifactName }}
+          path: ${{ github.workspace }}\windows\${{ steps.setup.outputs.artifactFileName }}
+
   windows-qt6-build:
     name: Build Qt6 (Windows)
     runs-on: windows-2022
@@ -219,7 +282,7 @@ jobs:
     name: Create and upload release
     runs-on: ubuntu-22.04
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-    needs: [windows-qt6-package, macos-qt6-package]
+    needs: [windows-qt6-package, macos-qt6-package, windows-build]
     defaults:
       run:
         shell: bash
@@ -241,6 +304,17 @@ jobs:
           for arch in x64 x86; do
             _temp=$(mktemp -d)
             pushd "${_temp}" > /dev/null
+
+            for artifact in ${GITHUB_WORKSPACE}/**/windows-@(deps)-!(qt6*)-${arch}.*; do
+              case ${artifact} in
+                *.zip) unzip ${artifact} > /dev/null ;;
+                *.tar.xz) XZ_OPT=-T0 tar -xJf ${artifact} ;;
+                *.tar.gz) tar -xzf ${artifact} ;;
+              esac
+            done
+
+            zip -r windows-deps-${{ steps.metadata.outputs.version }}-${arch}.zip -- *
+            mv windows-deps-${{ steps.metadata.outputs.version }}-${arch}.zip ${GITHUB_WORKSPACE}
 
             mv ${GITHUB_WORKSPACE}/qt6-windows-${arch}-!(*-@(Debug|RelWithDebInfo|Release|MinSizeRel))/*.zip ${GITHUB_WORKSPACE}
             popd > /dev/null
